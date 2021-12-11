@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/kdevo/gocfg/pkg/config"
@@ -43,7 +44,7 @@ func (c *Config) Name() string {
 	return "Static"
 }
 
-func main() {
+func TestMain(t *testing.T) {
 	// get config from 'JSON' first, fallback to 'Static' defaults otherwise:
 	loader := config.From(provider.JSON("config.json")).
 		WithDefaults(&Config{
