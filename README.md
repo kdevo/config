@@ -1,14 +1,18 @@
-## gocfg
+## config
 
 > :warning: Work in progress!
 
-A simple [multi-layered config loader](#loading-rules) for Go.
+A simple [multi-layered config loader](#rules) for Go.
 
 Made for smaller projects. No external dependencies.
 
-### Example
+### Installation
 
-From [main.go](./main.go):
+```
+go get -u github.com/kdevo/config
+```
+
+### Example
 
 ```go
 // Define your configuration struct:
@@ -46,11 +50,12 @@ func (c *Config) Name() string {
 }
 
 func main() {
-	// get config from 'JSON' first, fallback to 'Static' defaults otherwise:
+	// get config from 'JSON' first, fallback to 'Static' defaults otherwise.
+	// we can have any layer of chained config providers by using the builder funcs:
 	loader := config.From(provider.JSON("config.json")).
 		WithDefaults(&Config{
 			RepoOwner: "kdevo",
-			RepoName:  "gocfg",
+			RepoName:  "config",
 		}) // works because we've implemented the config provider interface above
 	var cfg Config
 	err := loader.Resolve(&cfg) // calls Validate if implemented
@@ -62,9 +67,9 @@ func main() {
 }
 ```
 
-Please also take a look at the config [loader test](./pkg/config/loader_test.go).
+Please also take a look at the [config loader test](./config_test.go).
 
-## Loading Rules <a href="loading-rules"></a>
+## Loading Rules <a href="rules"></a>
 
 1. Earlier config providers take precedence.
 2. Config structs must be marshable.

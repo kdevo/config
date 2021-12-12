@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kdevo/gocfg/pkg/config"
-	"github.com/kdevo/gocfg/pkg/provider"
+	"github.com/kdevo/config"
+	"github.com/kdevo/config/provider"
 )
 
 type Config struct {

@@ -5,6 +5,15 @@ import (
 	"fmt"
 )
 
+type ConfigProvider interface {
+	Config() (interface{}, error)
+	Name() string
+}
+
+type Config interface {
+	Validate() error
+}
+
 // Loader is a simple config loader which makes use of (un)marshalling to a generic map.
 // It therewith indirects any tedious reflection access.
 type Loader struct {

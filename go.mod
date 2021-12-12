@@ -1,3 +1,3 @@
-module github.com/kdevo/gocfg
+module github.com/kdevo/config
 
 go 1.17
