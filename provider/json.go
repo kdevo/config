@@ -8,14 +8,16 @@ import (
 )
 
 type JSONProvider struct {
-	name string
-	path string
+	name   string
+	path   string
+	target interface{}
 }
 
 func JSON(path string) *JSONProvider {
 	return &JSONProvider{
-		name: "JSON",
-		path: path,
+		name:   "json",
+		path:   path,
+		target: nil,
 	}
 }
 
@@ -28,6 +30,11 @@ func (p *JSONProvider) Name() string {
 	return p.name
 }
 
+func (p *JSONProvider) WithTarget(typ interface{}) *JSONProvider {
+	p.target = typ
+	return p
+}
+
 func (p *JSONProvider) Config() (interface{}, error) {
 	r, err := os.Open(p.path)
 	if err != nil {
@@ -37,10 +44,10 @@ func (p *JSONProvider) Config() (interface{}, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not read file: %w", err)
 	}
-	var config interface{} // TODO(kdevo): use target type instead
-	err = json.Unmarshal(data, &config)
+	target := p.target
+	err = json.Unmarshal(data, &target)
 	if err != nil {
 		return nil, fmt.Errorf("could not unmarshal: %w", err)
 	}
-	return &config, nil
+	return target, nil
 }
