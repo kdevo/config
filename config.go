@@ -10,9 +10,17 @@ type ConfigProvider interface {
 	Name() string
 }
 
+type FieldAwareConfigProvider interface {
+	ConfigProvider
+	Inject(fields Fields)
+}
+
 type Config interface {
 	Validate() error
 }
+
+// Fields is a mapping from field name to value.
+type Fields map[string]interface{}
 
 // Loader is a simple config loader which makes use of (un)marshalling to a generic map.
 // It therewith indirects any tedious reflection access.
@@ -34,25 +42,36 @@ func (l *Loader) WithDefaults(cs ...ConfigProvider) *Loader {
 }
 
 func (l *Loader) Resolve(target interface{}) error {
-	fields, err := toMap(target)
+	fields, err := ToFields(target)
 	if err != nil {
 		return err
 	}
 	resolved := make(map[string]interface{}, len(fields))
 	for _, p := range l.providers {
+		// Inject fields if supported by provider:
+		if fieldAwareProvider, ok := p.(FieldAwareConfigProvider); ok {
+			fieldAwareProvider.Inject(fields)
+		}
+		// Try to get the config, skip if a not recoverable err is returned:
 		var configErrors *Errors
 		cfg, err := p.Config()
 		if err != nil {
-			var ok bool
-			configErrors, ok = err.(*Errors)
+			l.providerErrors[p.Name()] = err
+			errs, ok := err.(*Errors)
 			if !ok {
 				continue
 			}
-			l.providerErrors[p.Name()] = configErrors
+			configErrors = errs
 		}
-		providerConfig, err := toMap(cfg)
-		if err != nil {
-			return err
+		// Capture maps directly if returned by provider:
+		var providerConfig map[string]interface{}
+		if m, ok := cfg.(map[string]interface{}); ok {
+			providerConfig = m
+		} else {
+			providerConfig, err = ToFields(cfg)
+			if err != nil {
+				return err
+			}
 		}
 		for field := range fields {
 			// skip if already resolved:
@@ -78,7 +97,7 @@ func (l *Loader) Resolve(target interface{}) error {
 			break
 		}
 	}
-	err = toConfig(resolved, target)
+	err = ToConfig(resolved, target)
 	if err != nil {
 		return err
 	}
@@ -102,7 +121,7 @@ func (e ProviderErrors) Providers() []string {
 	return providers
 }
 
-func toMap(v interface{}) (map[string]interface{}, error) {
+func ToFields(v interface{}) (Fields, error) {
 	d, err := json.Marshal(v)
 	if err != nil {
 		return nil, fmt.Errorf("can not convert to JSON: %w", err)
@@ -115,7 +134,7 @@ func toMap(v interface{}) (map[string]interface{}, error) {
 	return res, nil
 }
 
-func toConfig(m map[string]interface{}, target interface{}) error {
+func ToConfig(m map[string]interface{}, target interface{}) error {
 	d, err := json.Marshal(m)
 	if err != nil {
 		return fmt.Errorf("can not convert to JSON: %w", err)
