@@ -11,8 +11,8 @@ import (
 )
 
 type Config struct {
-	RepoOwner   string
-	RepoName    string
+	RepoOwner   string `json:"owner"`
+	RepoName    string `json:"name"`
 	URL         string
 	HTTPTimeout time.Duration
 }
@@ -96,11 +96,15 @@ func Test_Loader(t *testing.T) {
 		},
 		{
 			name: "load all with multi-layered defaults via different providers",
-			loader: config.From(provider.Dynamic(func() (interface{}, error) {
-				return &Config{RepoOwner: "hugo-mods", RepoName: "discussions"}, nil
+			loader: config.From(provider.Function("config", func() (interface{}, error) {
+				return &Config{RepoName: "discussions"}, nil
 			},
 			)).WithDefaults(
-				provider.JSON("testdata/config.json"),
+				provider.Environment().WithEnvLookupFunc(func(n string) (string, bool) {
+					v, ok := map[string]string{"OWNER": "hugo-mods"}[n] // simulate env variable
+					return v, ok
+				}),
+				provider.JSON("testdata/config.json").WithTarget(&Config{}),
 				&Config{
 					HTTPTimeout: 11 * time.Second,
 				},
