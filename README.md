@@ -25,7 +25,7 @@ type Config struct {
 
 // A config is complete when it can be validated.
 // By optionally implementing the Config interface's Validate, we can detect errors.
-func (c *Config) Validate() error {
+func (c Config) Validate() error {
 	var errors config.Errors
 	if !strings.HasPrefix(c.URL, "http") {
 		// Capture errors on a per-field basis by naming the errors accordingly.
@@ -40,12 +40,12 @@ func (c *Config) Validate() error {
 
 // Config providers follow below signature and return a config and eventually an error.
 // There is nothing that prevents the config from being a provider for itself:
-func (c *Config) Config() (interface{}, error) {
+func (c Config) Config() (Config, error) {
 	return c, c.Validate() // makes some things easier later on
 }
 
 // Name the config provider accordingly to make it easily identifiable later on.
-func (c *Config) Name() string {
+func (c Config) Name() string {
 	return "Static"
 }
 
@@ -53,12 +53,11 @@ func main() {
 	// get config from 'JSON' first, fallback to 'Static' defaults otherwise.
 	// we can have any layer of chained config providers by using the builder funcs:
 	loader := config.From(provider.JSON("config.json")).
-		WithDefaults(&Config{
+		WithDefaults(Config{
 			RepoOwner: "kdevo",
 			RepoName:  "config",
 		}) // works because we've implemented the config provider interface above
-	var cfg Config
-	err := loader.Resolve(&cfg) // calls Validate if implemented
+	err := loader.Resolve() // calls Validate
 	if err != nil {
 		// examine errors by providers to find out the cause:
 		fmt.Printf("providers errors: %v\n", loader.ProviderErrors())
@@ -69,7 +68,7 @@ func main() {
 
 Please also take a look at the [config loader test](./config_test.go).
 
-## Loading Rules <a href="rules"></a>
+## Loading Rules <a id="rules"></a>
 
 1. Earlier config providers take precedence.
 2. Config structs must be marshable.

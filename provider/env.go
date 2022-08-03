@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"encoding/json"
 	"os"
 	"strings"
 	"unicode"
@@ -11,52 +12,58 @@ import (
 type caseConverterFunc func(string) string
 type envLookupFunc func(string) (string, bool)
 
-type EnvProvider struct {
+type EnvProvider[T config.Config] struct {
 	name          string
 	fields        config.Fields
 	caseConverter caseConverterFunc
-	envFunc       envLookupFunc
+	env           envLookupFunc
 }
 
-func Environment() *EnvProvider {
-	return &EnvProvider{
+func Environment[T config.Config]() *EnvProvider[T] {
+	return &EnvProvider[T]{
 		name:          "environment",
 		caseConverter: CamelToUpperCase,
-		envFunc:       os.LookupEnv,
+		env:           os.LookupEnv,
 	}
 }
 
-func (p *EnvProvider) Name() string {
+func (p *EnvProvider[T]) Name() string {
 	return p.name
 }
 
-func (p *EnvProvider) WithName(n string) *EnvProvider {
+func (p *EnvProvider[T]) WithName(n string) *EnvProvider[T] {
 	p.name = n
 	return p
 }
 
-func (p *EnvProvider) WithCaseConverter(cc caseConverterFunc) *EnvProvider {
+func (p *EnvProvider[T]) WithCaseConverter(cc caseConverterFunc) *EnvProvider[T] {
 	p.caseConverter = cc
 	return p
 }
 
-func (p *EnvProvider) WithEnvLookupFunc(e envLookupFunc) *EnvProvider {
-	p.envFunc = e
+func (p *EnvProvider[T]) WithEnvLookupFunc(e envLookupFunc) *EnvProvider[T] {
+	p.env = e
 	return p
 }
 
-func (p *EnvProvider) Inject(fields config.Fields) {
+func (p *EnvProvider[T]) Inject(fields config.Fields) {
 	p.fields = fields
 }
 
-func (p *EnvProvider) Config() (interface{}, error) {
-	m := make(map[string]interface{})
+func (p *EnvProvider[T]) Config() (T, error) {
+	m := make(map[string]any)
 	for f := range p.fields {
-		if v, ok := p.envFunc(p.caseConverter(f)); ok {
+		if v, ok := p.env(p.caseConverter(f)); ok {
 			m[f] = v
 		}
 	}
-	return m, nil
+	d, err := json.Marshal(m)
+	var target T
+	if err != nil {
+		return target, err
+	}
+	err = json.Unmarshal(d, &target)
+	return target, err
 }
 
 func CamelToUpperCase(field string) string {

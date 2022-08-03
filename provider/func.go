@@ -1,29 +1,31 @@
 package provider
 
-type FunctionalProvider struct {
+import "github.com/kdevo/config"
+
+type FunctionalProvider[T config.Config] struct {
 	name         string
-	providerFunc func() (interface{}, error)
+	providerFunc func() (T, error)
 }
 
-func Function(name string, fn func() (interface{}, error)) *FunctionalProvider {
+func Function[T config.Config](name string, fn func() (T, error)) *FunctionalProvider[T] {
 	if name == "" {
 		name = "function"
 	}
-	return &FunctionalProvider{
+	return &FunctionalProvider[T]{
 		name:         name,
 		providerFunc: fn,
 	}
 }
 
-func (p *FunctionalProvider) WithName(name string) *FunctionalProvider {
+func (p *FunctionalProvider[T]) WithName(name string) *FunctionalProvider[T] {
 	p.name = name
 	return p
 }
 
-func (p *FunctionalProvider) Config() (interface{}, error) {
+func (p *FunctionalProvider[T]) Config() (T, error) {
 	return p.providerFunc()
 }
 
-func (p *FunctionalProvider) Name() string {
+func (p *FunctionalProvider[T]) Name() string {
 	return p.name
 }

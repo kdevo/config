@@ -32,6 +32,10 @@ func (d *duration) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+func (c Config) Validate() error {
+	return nil
+}
+
 func TestConfig(t *testing.T) {
 	testCases := []struct {
 		name       string
@@ -54,21 +58,15 @@ func TestConfig(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			c := provider.Environment().WithEnvLookupFunc(tc.env.GetEnv)
+			c := provider.Environment[Config]().WithEnvLookupFunc(tc.env.GetEnv)
 			fields, _ := config.ToFields(Config{})
 			c.Inject(fields)
 			cfg, err := c.Config()
 			if err != nil {
 				t.Errorf("got unwanted error: %v", err)
 			}
-			data, err := json.Marshal(cfg)
-			if err != nil {
-				t.Errorf("got unwanted error: %v", err)
-			}
-			gotConfig := Config{}
-			json.Unmarshal(data, &gotConfig)
-			if !reflect.DeepEqual(tc.wantConfig, gotConfig) {
-				t.Errorf("unexpected result:\n  want=%v\n   got=%v", tc.wantConfig, gotConfig)
+			if !reflect.DeepEqual(tc.wantConfig, cfg) {
+				t.Errorf("unexpected result:\n  want=%v\n   got=%v", tc.wantConfig, cfg)
 			}
 		})
 	}

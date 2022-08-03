@@ -3,15 +3,16 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 )
 
-type ConfigProvider interface {
-	Config() (interface{}, error)
+type ConfigProvider[T Config] interface {
+	Config() (T, error)
 	Name() string
 }
 
-type FieldAwareConfigProvider interface {
-	ConfigProvider
+type FieldAwareConfigProvider[T Config] interface {
+	ConfigProvider[T]
 	Inject(fields Fields)
 }
 
@@ -20,36 +21,42 @@ type Config interface {
 }
 
 // Fields is a mapping from field name to value.
-type Fields map[string]interface{}
+type Fields map[string]any
 
 // Loader is a simple config loader which makes use of (un)marshalling to a generic map.
 // It therewith indirects any tedious reflection access.
-type Loader struct {
-	providers      []ConfigProvider
+type Loader[T Config] struct {
+	providers      []ConfigProvider[T]
 	providerErrors ProviderErrors
 }
 
-func From(cs ...ConfigProvider) *Loader {
-	return &Loader{
+func From[T Config](cs ...ConfigProvider[T]) *Loader[T] {
+	return &Loader[T]{
 		providers:      cs,
 		providerErrors: make(map[string]error, len(cs)),
 	}
 }
 
-func (l *Loader) WithDefaults(cs ...ConfigProvider) *Loader {
+func (l *Loader[T]) WithDefaults(cs ...ConfigProvider[T]) *Loader[T] {
 	l.providers = append(l.providers, cs...)
 	return l
 }
 
-func (l *Loader) Resolve(target interface{}) error {
+func (l *Loader[T]) Resolve() (T, error) {
+	var target T
+	// If it's a pointer, we can't safely ensure that the struct is non-nil.
+	// However, we need the struct to be initialized (just empty values) to be able to iterate through fields.
+	if reflect.ValueOf(target).Kind() == reflect.Pointer {
+		return target, fmt.Errorf("provided config T must not be a pointer")
+	}
 	fields, err := ToFields(target)
 	if err != nil {
-		return err
+		return target, err
 	}
-	resolved := make(map[string]interface{}, len(fields))
+	resolved := make(Fields, len(fields))
 	for _, p := range l.providers {
 		// Inject fields if supported by provider:
-		if fieldAwareProvider, ok := p.(FieldAwareConfigProvider); ok {
+		if fieldAwareProvider, ok := p.(FieldAwareConfigProvider[T]); ok {
 			fieldAwareProvider.Inject(fields)
 		}
 		// Try to get the config, skip if a not recoverable err is returned:
@@ -64,14 +71,9 @@ func (l *Loader) Resolve(target interface{}) error {
 			configErrors = errs
 		}
 		// Capture maps directly if returned by provider:
-		var providerConfig map[string]interface{}
-		if m, ok := cfg.(map[string]interface{}); ok {
-			providerConfig = m
-		} else {
-			providerConfig, err = ToFields(cfg)
-			if err != nil {
-				return err
-			}
+		providerConfig, err := ToFields(cfg)
+		if err != nil {
+			return target, err
 		}
 		for field := range fields {
 			// skip if already resolved:
@@ -83,6 +85,7 @@ func (l *Loader) Resolve(target interface{}) error {
 				continue
 			}
 			// skip if field is not available:
+			// TODO(kdevo): T must be the same for each provider, so we probably don't need this check anymore:
 			val, ok := providerConfig[field]
 			if !ok {
 				continue
@@ -97,17 +100,14 @@ func (l *Loader) Resolve(target interface{}) error {
 			break
 		}
 	}
-	err = ToConfig(resolved, target)
+	target, err = ToConfig[T](resolved)
 	if err != nil {
-		return err
+		return target, err
 	}
-	if targetConfig, ok := target.(Config); ok {
-		err = targetConfig.Validate()
-	}
-	return err
+	return target, target.Validate()
 }
 
-func (p *Loader) ProviderErrors() ProviderErrors {
+func (p *Loader[T]) ProviderErrors() ProviderErrors {
 	return p.providerErrors
 }
 
@@ -121,27 +121,28 @@ func (e ProviderErrors) Providers() []string {
 	return providers
 }
 
-func ToFields(v interface{}) (Fields, error) {
+func ToFields(v Config) (Fields, error) {
 	d, err := json.Marshal(v)
 	if err != nil {
 		return nil, fmt.Errorf("can not convert to JSON: %w", err)
 	}
-	res := map[string]interface{}{}
+	var res Fields
 	err = json.Unmarshal(d, &res)
 	if err != nil {
-		return nil, fmt.Errorf("can not convert to generic map: %w", err)
+		return nil, fmt.Errorf("can not convert to generic Fields map: %w", err)
 	}
 	return res, nil
 }
 
-func ToConfig(m map[string]interface{}, target interface{}) error {
+func ToConfig[T Config](m Fields) (T, error) {
+	var target T
 	d, err := json.Marshal(m)
 	if err != nil {
-		return fmt.Errorf("can not convert to JSON: %w", err)
+		return target, fmt.Errorf("can not convert to JSON: %w", err)
 	}
-	err = json.Unmarshal(d, target)
+	err = json.Unmarshal(d, &target)
 	if err != nil {
-		return fmt.Errorf("can not convert to target: %w", err)
+		return target, fmt.Errorf("can not convert to target: %w", err)
 	}
-	return nil
+	return target, nil
 }

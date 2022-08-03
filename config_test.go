@@ -17,15 +17,15 @@ type Config struct {
 	HTTPTimeout time.Duration
 }
 
-func (c *Config) Config() (interface{}, error) {
+func (c Config) Config() (Config, error) {
 	return c, c.Validate()
 }
 
-func (c *Config) Name() string {
+func (c Config) Name() string {
 	return "Config"
 }
 
-func (c *Config) Validate() error {
+func (c Config) Validate() error {
 	var errors config.Errors
 	if c.RepoOwner == "" {
 		errors.Add(config.Err("RepoOwner", c.RepoOwner, "must not be empty"))
@@ -46,47 +46,47 @@ func (c *Config) Validate() error {
 func Test_Loader(t *testing.T) {
 	testCases := []struct {
 		name        string
-		loader      *config.Loader
-		want        *Config
+		loader      *config.Loader[Config]
+		want        Config
 		wantIsValid bool
 	}{
 		{
 			name:   "load without defaults",
-			loader: config.From(&Config{RepoOwner: "kdevo"}),
-			want: &Config{
+			loader: config.From[Config](Config{RepoOwner: "kdevo"}),
+			want: Config{
 				RepoOwner: "kdevo",
 			},
 			wantIsValid: false,
 		},
 		{
 			name: "load missing with defaults",
-			loader: config.From(&Config{RepoOwner: "kdevo"}).
-				WithDefaults(&Config{RepoName: "osprey-delight"}),
-			want:        &Config{RepoOwner: "kdevo", RepoName: "osprey-delight"},
+			loader: config.From[Config](Config{RepoOwner: "kdevo"}).
+				WithDefaults(Config{RepoName: "osprey-delight"}),
+			want:        Config{RepoOwner: "kdevo", RepoName: "osprey-delight"},
 			wantIsValid: false,
 		},
 		{
 			name: "load with defaults without default overriding higher priority",
-			loader: config.From(&Config{RepoOwner: "kdevo"}).
-				WithDefaults(&Config{RepoOwner: "hugo-mods"}),
-			want: &Config{
+			loader: config.From[Config](Config{RepoOwner: "kdevo"}).
+				WithDefaults(Config{RepoOwner: "hugo-mods"}),
+			want: Config{
 				RepoOwner: "kdevo",
 			},
 			wantIsValid: false,
 		},
 		{
 			name: "load all with multi-layered defaults",
-			loader: config.From(&Config{
+			loader: config.From[Config](Config{
 				RepoOwner: "hugo-mods",
 				RepoName:  "discussions",
-			}).WithDefaults(&Config{
+			}).WithDefaults(Config{
 				RepoOwner:   "test",
 				HTTPTimeout: 1 * time.Microsecond,
-			}).WithDefaults(&Config{
+			}).WithDefaults(Config{
 				HTTPTimeout: 2 * time.Second,
 				URL:         "https://hugo-mods.github.io/sitemap.xml",
 			}),
-			want: &Config{
+			want: Config{
 				RepoOwner:   "hugo-mods",
 				RepoName:    "discussions",
 				HTTPTimeout: 2 * time.Second,
@@ -96,41 +96,40 @@ func Test_Loader(t *testing.T) {
 		},
 		{
 			name: "load all with multi-layered defaults via different providers",
-			loader: config.From(provider.Function("config", func() (interface{}, error) {
-				return &Config{RepoName: "discussions"}, nil
+			loader: config.From[Config](provider.Function("config", func() (Config, error) {
+				return Config{RepoName: "discussions"}, nil
 			},
 			)).WithDefaults(
-				provider.Environment().WithEnvLookupFunc(func(n string) (string, bool) {
+				provider.Environment[Config]().WithEnvLookupFunc(func(n string) (string, bool) {
 					v, ok := map[string]string{"OWNER": "hugo-mods"}[n] // simulate env variable
 					return v, ok
 				}),
-				provider.JSON("testdata/config.json").WithTarget(&Config{}),
-				&Config{
+				provider.JSON[Config]("testdata/config.json"),
+				Config{
 					HTTPTimeout: 11 * time.Second,
 				},
-				&Config{
+				Config{
 					HTTPTimeout: 1 * time.Second,
 					URL:         "https://hugo-mods.github.io/sitemap.xml",
 				},
 			),
-			want: &Config{
-				RepoOwner:   "hugo-mods",
-				RepoName:    "discussions",
-				URL:         "https://hugo-mods.github.io/sitemap.xml",
-				HTTPTimeout: 11 * time.Second,
+			want: Config{
+				RepoOwner:   "hugo-mods",                               // from provider.Environment
+				RepoName:    "discussions",                             // from provider.Function
+				URL:         "https://hugo-mods.github.io/sitemap.xml", // from first Config
+				HTTPTimeout: 11 * time.Second,                          // from first Config
 			},
 			wantIsValid: true,
 		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			var got Config
-			err := tc.loader.Resolve(&got)
+			got, err := tc.loader.Resolve()
 			if isValid := err == nil; isValid != tc.wantIsValid {
-				t.Errorf("want isComplete = %t, but got = %t: %v", tc.wantIsValid, isValid, err)
+				t.Errorf("want isValid = %t, but got = %t: %v", tc.wantIsValid, isValid, err)
 			}
-			if !reflect.DeepEqual(*tc.want, got) {
-				t.Errorf("unexpected result:\n  want=%s\n   got=%s", *tc.want, got)
+			if !reflect.DeepEqual(tc.want, got) {
+				t.Errorf("unexpected result:\n  want=%s\n   got=%s", tc.want, got)
 			}
 		})
 	}
